@@ -1,0 +1,9 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r}
+install.packages(c("tidyverse","funModeling", "GGally", "ggplot2", "ggrepel", "scico", "lubridate", "ISLR", "ISLR2", "nycflights13", "weathermetrics", "ggridges", "MASS", "broom", "dotwhisker", "performance"))
+```
+
