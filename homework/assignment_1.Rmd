@@ -1,0 +1,188 @@
+# Exercise 1
+### 1.
+**For a fixed value of IQ and GPA,males earn more on average than females.**  
+Depends on fixed value of \(X1\), because being female increases \(X3\) to 1,
+which means that the salary changes by 
+\(\hat{\beta}_3 + \hat{\beta}_5 X_1 = 35 - 10 X_1\).  
+So false, for a GPA < 3.5 and true for a GPA > 3.5.  
+
+**For a fixed value of IQ and GPA, females earn more on average than males.**  
+See above.  
+
+**For a fixed value of IQ and GPA,males earn more on average than females provided that the GPA is high enough.**  
+True, if GPA > 3.5.
+
+**For a fixed value of IQ and GPA, females earn more on average than males provided that the GPA is high enough.**  
+False.
+
+### 2.
+\(\hat{y} = 50 + 4.0 * 20 + 110 * 0.07 + 1 * 35 + 4.0 * 110 * 0.01 + 4.0 * 1 * (-10) = 137.1\)
+
+### 3.
+False, because the effect that the GPA/IQ interaction term has on the salary not
+only depends on the magnitude of \(\hat{\beta}_3\), but also on the magnitude of
+\(X_1\) and \(X_2\). As IQ is generally around 100, the effect of the GPA/IQ
+interaction term can be quite high. Also to statistacally measure the effect we
+would have to look at the p value.
+
+
+# Exercise 2
+First we import the relevant libraries and the data.
+```{r, message=FALSE}
+library(MASS) # For Boston data set
+library(tidymodels)
+# library(ISLR)
+library(GGally)
+library(broom)
+library(dotwhisker)
+# library(performance)
+# library(funModeling)
+```
+
+```{r setup}
+rm( list=ls())
+set.seed( 42 )
+options(scipen=10000)
+```
+
+```{r}
+data(Boston)
+head(Boston)
+```
+
+Then we setup up our linear regression specification.
+```{r}
+lm_spec <- linear_reg() %>%
+  set_mode("regression") %>%
+  set_engine("lm")
+
+show_engines("linear_reg")
+```
+
+Now we run one linear regression on the crime rate for each predictor.
+```{r}
+target <- "crim"
+# init empty results df
+results <- data.frame()
+# loop over each column in the data set except the target
+for (col in colnames(Boston)) {
+  if (col == target) {
+      next
+  }
+  lm_fit <- lm_spec %>%
+    fit_xy(
+      x = Boston %>% select(all_of(col)),
+      y = Boston %>% select(all_of(target))
+    )
+  term <- tidy(lm_fit)[2, ]
+  # append to df
+  results <- rbind(results, term)
+}
+results
+```
+
+Now let's visualize the results with whiskers.
+```{r}
+results %>%
+  dwplot(dot_args = list(size = 2, color = "black"),
+         whisker_args = list(color = "black"),
+         vline = geom_vline(xintercept = 0, colour = "grey50", linetype = 2))
+```
+As we can see the coefficient of the variable nox, which stands for "nitrogen
+oxides concentration", has the highest magnitude and is significant.  
+
+Let us remove it so that we can see the other coefficients better.
+
+
+```{r}
+results_sm <- results %>%
+  filter(term != "nox")
+
+results_sm
+```
+  
+```{r}
+results_sm %>%
+  dwplot(dot_args = list(size = 2, color = "black"),
+         whisker_args = list(color = "black"),
+         vline = geom_vline(xintercept = 0, colour = "grey50", linetype = 2))
+```
+
+Now we see that every predictor has a significant coefficient except chas, which
+is a dummy variable that tells us whether the Charles River runs through this
+neighborhood.
+
+However, we will get a we get a better picture of which predictors are relevant
+if we run a linear regression with all predictors at once.
+
+```{r}
+lm_fit <- lm_spec %>%
+  fit(crim ~ ., data = Boston)
+```
+
+```{r}
+lm_fit %>% 
+  pluck("fit") %>%
+  summary()
+```
+
+```{r}
+tidy(lm_fit) %>% 
+  dwplot(dot_args = list(size = 2, color = "black"),
+         whisker_args = list(color = "black"),
+         vline = geom_vline(xintercept = 0, colour = "grey50", linetype = 2))
+```
+
+```{r}
+significant_predictors <- tidy(lm_fit) %>%
+  filter(p.value < 0.05)
+significant_predictors
+```
+
+```{r}
+significant_predictors %>% 
+  dwplot(dot_args = list(size = 2, color = "black"),
+         whisker_args = list(color = "black"),
+         vline = geom_vline(xintercept = 0, colour = "grey50", linetype = 2))
+??Boston
+```
+
+As we can see now only 5 predictors are significant (p value above 0.05).
+
+`zn`: proportion of residential land zoned for lots over 25,000 sq.ft.
+`dis` weighted mean of distances to five Boston employment centres.
+`rad` index of accessibility to radial highways.
+`black` 1000(Bk - 0.63)^2 where Bk is the proportion of blacks by town.
+`medv` median value of owner-occupied homes in $1000s.
+
+# Exercise 3
+
+```{r}
+install.packages("wooldridge")
+library(wooldridge)
+data(hprice1)
+```
+
+```{r}
+??hprice1
+head(hprice1)
+```
+
+```{r}
+lm_fit <- lm_spec %>%
+  fit(price ~ sqrft + bdrms, data = hprice1)
+```
+
+```{r}
+lm_fit %>%
+  predict(new_data = hprice1)
+```
+```{r}
+hprice1_pred <- bind_cols(
+    lm_fit %>% predict(new_data = hprice1),
+    hprice1
+  )
+hprice1_pred[1,]
+```
+
+The predicted selling price for the first house is 354.6052.
