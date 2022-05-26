@@ -1,4 +1,3 @@
-
 # R Intro
 
 Load required packages.
@@ -14,13 +13,11 @@ library( GGally )
 
 Set up workspace, i.e., remove all existing data from working memory, initialize the random number generator, turn of scientific notation of large numbers, set a standard theme for plotting.
 
-
 ```{r setup}
 rm( list=ls())
 set.seed( 42 )
 options(scipen=10000)
 ```
-
 
 ## Case: Flight delays in NYC
 
@@ -268,7 +265,7 @@ A *histogram* is an easy to interpret visualization of the distribution of a num
 ```{r}
 flights_all %>%
   ggplot( mapping = aes( x=distance )) +
-  geom_histogram( bins=100 ) 
+  geom_histogram( bins=50 ) 
 ```
 
 Using facets, we can visualize and compare distributions of different subsets of the data. Here, we split the data by `origin` and plot three *histograms side-by-side*.
@@ -276,17 +273,17 @@ Using facets, we can visualize and compare distributions of different subsets of
 ```{r}
 flights_all %>%
   ggplot( mapping = aes( x=distance ) ) +
-  geom_histogram( bins=100 ) +
+  geom_histogram( bins=30 ) +
   facet_wrap( ~origin )
 ```
 
 **Your task:** Create a bar chart with facets for visualizing `dep_delay` by `month`.
 
 ```{r}
-# YOUR CODE GOES HERE
-
-# The first who has the solution may post it to Slack.
-
+flights_all %>%
+  ggplot( mapping = aes( x=dep_delay ) ) +
+  geom_histogram( bins=30 ) +
+  facet_wrap( ~month )
 ```
 
 Instead of using discrete histograms, we can also draw a continuous *density plot*.
@@ -296,28 +293,37 @@ flights_all %>%
   ggplot( mapping = aes( x=distance )) +
   geom_density( fill="lightblue" ) 
 ```
+```{r}
+flights_all %>%
+  aes( x=distance )
+```
 
 *Ridgeline density plots* are a good solution for visualizing many distributions in one plot. Ridgeline plots are partially overlapping and can, hence, save some space. The parameter alpha controls the opaqueness of the fill colors in the plot.
 
 ```{r}
 flights_all %>%
-ggplot( mapping=aes( x = distance, y = carrier ) ) + 
+ggplot( mapping=aes( x = month, y = carrier ) ) + 
   geom_density_ridges( alpha=0.5 )
 ```
 
 **Your task:** Create a ridgeline density plot for temperatures by month.
 
 ```{r}
-# YOUR CODE GOES HERE
-
-# The first who has the solution may post it to Slack.
+flights_all %>%
+ggplot( mapping=aes( x = temp, y = month ) ) + 
+  geom_density_ridges( alpha=0.5 )
+```
+```{r}
+flights_all %>%
+  ggplot( mapping=aes( x = temp, y = as.factor(month) ) ) +
+  geom_density_ridges( alpha=0.5 )
 ```
 
 A *box plot* is another alternative for visualizing the distribution of a numerical variable. It also shows the quartiles of the distribution and potential outliers. [More about box plots...](https://en.wikipedia.org/wiki/Box_plot)
 
 ```{r}
 flights_all %>%
-  ggplot( mapping = aes( y=distance, x="All flights" )) +
+  ggplot( mapping = aes( y=distance, x="All flight" )) +
   geom_boxplot( )
 ```
 
@@ -332,9 +338,9 @@ flights_all %>%
 **Your task:** Create multiple box plots of `distance` by `carrier`.
 
 ```{r}
-# YOUR CODE GOES HERE
-
-# The first who has the solution may post it to Slack.
+flights_all %>% 
+  ggplot( mapping = aes( y=distance, x=carrier )) +
+  geom_boxplot( ) 
 ```
 
 ## Visualizing correlations between numerical variables with scatterplots
@@ -347,7 +353,7 @@ flights_all_sample <- flights_all %>%
 
 flights_all_sample %>%
   ggplot( mapping=aes( x=distance, y=air_time )) +
-  geom_point( alpha=0.1 )
+  geom_bin_2d( bins=100 )
 ```
 
 We can easily *add a linear trend line* to the scatterplot. Not surprisingly, we see a perfect linear relationship between the two variables. Using the `method` `gam` allows to show non-linear trends.
@@ -356,6 +362,7 @@ We can easily *add a linear trend line* to the scatterplot. Not surprisingly, we
 flights_all_sample %>%
   ggplot( mapping=aes( x=distance, y=air_time )) +
   geom_point( alpha=0.1 ) +
+  geom_bin_2d( bins=100, alpha=0.1 ) + 
   geom_smooth( method = "lm" )
 ```
 
@@ -373,9 +380,10 @@ ggpairs( flights_all_sample_selected )
 Visually explore the relationship between weather and delays. First, investigate the distributions of single variables, then look at bi-variate relationships...
 
 ```{r}
-# YOUR CODE GOES HERE
+flights_all_sample_selected <- flights_all_sample %>% 
+  select( temp, dewp, wind_speed, humid, dep_delay, arr_delay )
+
+ggpairs( flights_all_sample_selected )
 
 # The first who has the solution may post it to Slack.
 ```
-
-
