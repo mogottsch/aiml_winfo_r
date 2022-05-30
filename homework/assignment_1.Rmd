@@ -117,8 +117,7 @@ Now we see that every predictor has a significant coefficient except chas, which
 is a dummy variable that tells us whether the Charles River runs through this
 neighborhood.
 
-However, we will get a we get a better picture of which predictors are relevant
-if we run a linear regression with all predictors at once.
+However, we will get a better picture of which predictors are relevant if we run a linear regression with all predictors at once.
 
 ```{r}
 lm_fit <- lm_spec %>%
@@ -186,4 +185,4 @@ hprice1_pred <- bind_cols(
 hprice1_pred[1,]
 ```
 
-The predicted selling price for the first house is 354.6052.
+The predicted selling price for the first house is $354605.20.
