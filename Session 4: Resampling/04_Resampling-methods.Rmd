@@ -491,7 +491,6 @@ beer_aug <- beer_models %>%
   sample_n(200) %>%
   mutate(augmented = map(model, augment)) %>%
   unnest(augmented)
-
 beer_aug
 ```
 
