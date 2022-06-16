@@ -226,10 +226,10 @@ lasso_final_fit <- fit(lasso_final, data = College_train)
 ```
 
 ```{r}
-augment(ridge_final_fit, new_data = College_test) %>%
+augment(lasso_final_fit, new_data = College_test) %>%
   rmse(truth = Apps, estimate = .pred)
 ```
-The rmse is 1178, which is the same as for Ridge Regresssion.
+The rmse is 1192.677, which is worse than Ridge and a simple linear model.
 
 ```{r}
 lasso_final_fit %>%
@@ -245,223 +245,112 @@ lasso_final_fit %>%
   labs(y = NULL)
 ```
 # Exercise 2
+
 Fit some of the non-linear models (polynomial regression, splines) discussed in
 the lecture to the Auto data set. 
 Is there evidence for non-linear relationships in this data set? Create some
 informative plots to justify your answer.
 
-
 ```{r}
-# Recipe
-lasso_pl_recipe <-
-  recipe(formula = Apps ~ ., data = College_train) %>%
-  step_poly(all_numeric_predictors(), degree = 2, options = list(raw = TRUE)) %>%
-  step_novel(all_nominal_predictors()) %>%
-  step_dummy(all_nominal_predictors()) %>%
-  step_zv(all_predictors()) %>%
-  step_normalize(all_predictors())
+Auto <- tibble(Auto)
 
-# Specification
-lasso_pl_spec <-
-  linear_reg(mixture = 1, penalty = tune()) %>%
-  set_mode("regression") %>%
-  set_engine("glmnet")
-
-# Workflow
-lasso_pl_workflow <- workflow() %>%
-  add_recipe(lasso_pl_recipe) %>%
-  add_model(lasso_pl_spec)
-
-# Grid
-penalty_grid <- grid_regular(
-  penalty(range = c(-5, 2)),
-  levels = 50
-)
-
-# Tune model
-tune_res <- tune_grid(
-  lasso_pl_workflow,
-  resamples = College_fold,
-  grid = penalty_grid
-)
-
-# Finalize model
-lasso_pl_final <- finalize_workflow(lasso_pl_workflow, best_penalty)
-lasso_pl_final_fit <- fit(lasso_pl_final, data = College_train)
-
-# Check RMSE
-augment(lasso_pl_final_fit, new_data = College_test) %>%
-  rmse(truth = Apps, estimate = .pred)
+basic_eda(Auto)
 ```
 
-Using polynomial features reduced the error by 100, which is almost 10%. This
-indicates that there are non-linear relationships in the data.
-Let's look at the feature importance to see which polynomials are important.
-
 ```{r}
-lasso_pl_final_fit %>%
-  extract_fit_parsnip() %>%
-  vi(lambda = best_penalty$penalty) %>%
-  filter(Importance > 2) %>%
-  mutate(
-    Importance = abs(Importance),
-    Variable = fct_reorder(Variable, Importance)
-  ) %>%
-  ggplot(aes(x = Importance, y = Variable, fill = Sign)) +
-  geom_col() +
-  scale_x_continuous(expand = c(0, 0)) +
-  labs(y = NULL)
+ggpairs(Auto[, names(Auto) != "name"])
 ```
-As we can see, not surprisingly `Accept` is still the most important feature
-together with its polynomial.
-Let's run another polynomial (lasso) regression just with `Accept` so that we
-can visualize the relationship.
+There are some non linear looking relationships. 
+Let's look at `mpg` and `horsepower` 
 
+We will not perform train-test-split or hyper-parameter tuning here, as we are
+only interested in exploring the relations.
 
 
 ```{r}
 # Recipe
-lasso_pl_recipe <-
-  recipe(formula = Apps ~ Accept, data = College_train) %>%
+polynomial_recipe <-
+  recipe(formula = mpg ~ horsepower, data = Auto) %>%
   step_poly(all_numeric_predictors(), degree = 2, options = list(raw = TRUE)) %>%
   step_normalize(all_predictors())
 
 # Specification
-lasso_pl_spec <-
+polynomial_spec <-
   linear_reg(mixture = 1, penalty = tune()) %>%
   set_mode("regression") %>%
-  set_engine("glmnet")
+  set_engine("lm")
+
 
 # Workflow
-lasso_pl_workflow <- workflow() %>%
-  add_recipe(lasso_pl_recipe) %>%
-  add_model(lasso_pl_spec)
-
-# Grid
-penalty_grid <- grid_regular(
-  penalty(range = c(-5, 2)),
-  levels = 50
-)
-
-# Tune model
-tune_res <- tune_grid(
-  lasso_pl_workflow,
-  resamples = College_fold,
-  grid = penalty_grid
-)
+polynomial_workflow <- workflow() %>%
+  add_recipe(polynomial_recipe) %>%
+  add_model(polynomial_spec)
 
 # Finalize model
-lasso_pl_final <- finalize_workflow(lasso_pl_workflow, best_penalty)
-lasso_pl_final_fit <- fit(lasso_pl_final, data = College_train)
-
-# Check RMSE
-augment(lasso_pl_final_fit, new_data = College_test) %>%
-  rmse(truth = Apps, estimate = .pred)
+polynomial_fit <- fit(polynomial_workflow, data = Auto)
 ```
 
 ```{r}
-accept_min <- min(College$Accept)
-accept_max <- max(College$Accept)
-accept_range <- tibble(Accept = seq(accept_min, accept_max))
-accept_range
+horsepower_min <- min(Auto$horsepower)
+horsepower_max <- max(Auto$horsepower)
+horsepower_range <- tibble(horsepower = seq(horsepower_min, horsepower_max))
+horsepower_range
 ```
 
 ```{r}
 regression_lines <- bind_cols(
-  predict(lasso_pl_final_fit, new_data = accept_range),
-  accept_range
+  predict(polynomial_fit, new_data = horsepower_range),
+  horsepower_range
 )
 
-College
-
-College %>%
-  ggplot(aes(Accept, Apps)) +
+Auto %>%
+  ggplot(aes(horsepower, mpg)) +
   geom_point(alpha = 0.2) +
   geom_line(aes(y = .pred), data = regression_lines, color = "blue")
 ```
-Ok this does look pretty linear. Let us take a look at the scatter plot between
-each variable and Accept instead.
-
-```{r}
-
-# plot scatter of all variabes in College vs Apps
-# get all colnames except for Apps
-colnames <- colnames(College)
-colnames <- colnames[colnames != "Apps"]
-
-for (colname in colnames) {
-  pl <- College %>%
-    ggplot(aes_string(x = colname, y = "Apps")) +
-    geom_point(alpha = 0.2)
-  print(pl)
-}
-```
-
-There are some non linear looking relationships. Let's look at books.
+We can see that the relation between `mpg` and `horsepower` is nicely fit by a
+polynomial of degree 2, which would not be possible with a simple linear
+regression.
 
 
 ```{r}
 # Recipe
-lasso_pl_recipe <-
-  recipe(formula = Apps ~ Books, data = College_train) %>%
-  step_poly(all_numeric_predictors(), degree = 2, options = list(raw = TRUE)) %>%
-  step_normalize(all_predictors())
+spline_recipe <-
+  recipe(formula = mpg ~ horsepower, data = Auto) %>%
+  step_bs(horsepower, options = list(knots = 70, 100, 130, 160, 190, 220))
 
 # Specification
-lasso_pl_spec <-
+spline_spec <-
   linear_reg(mixture = 1, penalty = tune()) %>%
   set_mode("regression") %>%
-  set_engine("glmnet")
+  set_engine("lm")
+
 
 # Workflow
-lasso_pl_workflow <- workflow() %>%
-  add_recipe(lasso_pl_recipe) %>%
-  add_model(lasso_pl_spec)
-
-# Grid
-penalty_grid <- grid_regular(
-  penalty(range = c(-5, 2)),
-  levels = 50
-)
-
-# Tune model
-tune_res <- tune_grid(
-  lasso_pl_workflow,
-  resamples = College_fold,
-  grid = penalty_grid
-)
+spline_workflow <- workflow() %>%
+  add_recipe(spline_recipe) %>%
+  add_model(spline_spec)
 
 # Finalize model
-lasso_pl_final <- finalize_workflow(lasso_pl_workflow, best_penalty)
-lasso_pl_final_fit <- fit(lasso_pl_final, data = College_train)
-
-# Check RMSE
-augment(lasso_pl_final_fit, new_data = College_test) %>%
-  rmse(truth = Apps, estimate = .pred)
-```
-
-```{r}
-books_min <- min(College$Books)
-books_max <- max(College$Books)
-books_range <- tibble(Books = seq(books_min, books_max))
-books_range
+spline_fit <- fit(spline_workflow, data = Auto)
 ```
 
 ```{r}
 regression_lines <- bind_cols(
-  predict(lasso_pl_final_fit, new_data = books_range),
-  books_range
+  predict(spline_fit, new_data = horsepower_range),
+  horsepower_range
 )
 
-College
-
-College %>%
-  ggplot(aes(Books, Apps)) +
+Auto %>%
+  ggplot(aes(horsepower, mpg)) +
   geom_point(alpha = 0.2) +
   geom_line(aes(y = .pred), data = regression_lines, color = "blue")
 ```
+We see that the fit created by splines is very similar to the polynomial
+regression. The only noticeable difference is that splines seem to act less
+extreme at the borders of our data, e.g. `horsepower > 200`.
 
-As we can see a polynomial fits this data better than a linear relationship.
+
 
 # Exercise 3
 The Wage data set contains a number of features, such as marital status (marital
