@@ -1,0 +1,597 @@
+---
+output:
+  pdf_document: default
+  html_document: default
+---
+**Disclaimer**: It is probably easier to read this assignment as `.Rmd` and not as PDF, because there are a lot of outputs and plots, which can get a little overwhelming when not viewed through RStudio.
+
+# Exercise 1
+
+In this exercise we use the College data set from the ISLR package. We predict the number of applications received using the other variables.
+
+```{r, echo=FALSE}
+set.seed(4711)
+```
+
+```{r, message=FALSE}
+library(ISLR)
+library(tidymodels)
+
+library(tidymodels)
+library(funModeling)
+library(ISLR)
+library(vip)
+library(forcats)
+library(GGally)
+
+?ISLR::College
+```
+
+```{r}
+College <- tibble(College)
+College
+```
+
+
+```{r}
+basic_eda <- function(data) {
+  glimpse(data)
+  print(status(data))
+  freq(data)
+  print(profiling_num(data))
+  plot_num(data)
+  describe(data)
+}
+
+basic_eda(College)
+```
+Split the data set into a training set and a test set.
+```{r}
+College_split <- initial_split(College, strata = Apps, prop = 0.5)
+College_split
+College_train <- training(College_split)
+College_test <- testing(College_split)
+```
+
+Fit a linear model using least squares on the training set, and report the test error obtained.
+```{r}
+lm_spec <- linear_reg() %>%
+  set_mode("regression") %>%
+  set_engine("lm")
+```
+
+
+```{r}
+lm_recipe <-
+  recipe(formula = Apps ~ ., data = College_train) %>%
+  step_dummy(all_nominal_predictors()) %>%
+  step_normalize(all_numeric_predictors())
+```
+
+**Note**: We use the variables `Accept` and `Enroll` as independent variables
+here. These variables describe the number of accepted applicants and the
+number of new enrolled students, respectively. Depending on the application one
+might not know these variables when predicting the the number of applications.
+
+```{r}
+lm_workflow <- workflow() %>%
+  add_recipe(lm_recipe) %>%
+  add_model(lm_spec)
+```
+
+```{r}
+lm_fit <- lm_workflow %>% fit(College_train)
+```
+
+```{r}
+augment(lm_fit, new_data = College_test) %>%
+  select(Apps, .pred)
+
+
+augment(lm_fit, new_data = College_test) %>%
+  rmse(truth = Apps, estimate = .pred)
+```
+The rmse of the test error is 1183.
+
+Out of curiosity, let's look at the feature importance.
+
+```{r}
+lm_fit %>%
+  extract_fit_parsnip() %>%
+  vi(lambda = best_penalty$penalty) %>%
+  mutate(
+    Importance = abs(Importance),
+    Variable = fct_reorder(Variable, Importance)
+  ) %>%
+  ggplot(aes(x = Importance, y = Variable, fill = Sign)) +
+  geom_col() +
+  scale_x_continuous(expand = c(0, 0)) +
+  labs(y = NULL)
+```
+
+
+Fit a ridge regression model on the training set, with \(\lambda\) chosen by cross-validation. Report the test error obtained.
+```{r}
+ridge_spec <- linear_reg(mixture = 0, penalty = tune()) %>%
+  set_mode("regression") %>%
+  set_engine("glmnet")
+
+ridge_workflow <- workflow() %>%
+  add_recipe(recipe = lm_recipe) %>%
+  add_model(ridge_spec)
+```
+
+```{r}
+College_fold <- vfold_cv(College_train, v = 10)
+College_fold
+```
+
+```{r}
+penalty_grid <- grid_regular(
+  penalty(range = c(-5, 5)), # penalty automatically uses log scale
+  levels = 50
+)
+penalty_grid
+```
+
+```{r}
+tune_res <- tune_grid(
+  ridge_workflow,
+  resamples = College_fold,
+  grid = penalty_grid
+)
+
+tune_res
+```
+
+```{r}
+autoplot(tune_res)
+```
+
+```{r}
+best_penalty <- select_best(tune_res, metric = "rmse")
+best_penalty
+```
+
+```{r}
+ridge_final <- finalize_workflow(ridge_workflow, best_penalty)
+ridge_final_fit <- ridge_final %>% fit(College_train)
+```
+
+```{r}
+augment(ridge_final_fit, new_data = College_test) %>%
+  rmse(truth = Apps, estimate = .pred)
+```
+
+The test error is 1178, which is slightly lower than a linear model without
+regularization.
+
+Again let's also look at the feature importance.
+
+```{r}
+ridge_final_fit %>%
+  extract_fit_parsnip() %>%
+  vi(lambda = best_penalty$penalty) %>%
+  mutate(
+    Importance = abs(Importance),
+    Variable = fct_reorder(Variable, Importance)
+  ) %>%
+  ggplot(aes(x = Importance, y = Variable, fill = Sign)) +
+  geom_col() +
+  scale_x_continuous(expand = c(0, 0)) +
+  labs(y = NULL)
+```
+
+
+Fit a lasso model on the training set, with \(\lambda\) chosen by
+cross-validation. Report the test error obtained, along with the number of
+non-zero coefficient estimates.
+
+
+```{r}
+lasso_spec <- linear_reg(mixture = 1, penalty = tune()) %>%
+  set_mode("regression") %>%
+  set_engine("glmnet")
+
+lasso_workflow <- workflow() %>%
+  add_recipe(recipe = lm_recipe) %>%
+  add_model(lasso_spec)
+```
+
+```{r}
+penalty_grid <- grid_regular(
+  penalty(range = c(-5, 2)),
+  levels = 50
+)
+```
+
+```{r}
+tune_res <- tune_grid(
+  lasso_workflow,
+  resamples = College_fold,
+  grid = penalty_grid
+)
+tune_res
+```
+
+```{r}
+best_penalty <- select_best(tune_res, metric = "rmse")
+best_penalty
+```
+
+```{r}
+lasso_final <- finalize_workflow(lasso_workflow, best_penalty)
+
+lasso_final_fit <- fit(lasso_final, data = College_train)
+```
+
+```{r}
+augment(ridge_final_fit, new_data = College_test) %>%
+  rmse(truth = Apps, estimate = .pred)
+```
+The rmse is 1178, which is the same as for Ridge Regresssion.
+
+```{r}
+lasso_final_fit %>%
+  extract_fit_parsnip() %>%
+  vi(lambda = best_penalty$penalty) %>%
+  mutate(
+    Importance = abs(Importance),
+    Variable = fct_reorder(Variable, Importance)
+  ) %>%
+  ggplot(aes(x = Importance, y = Variable, fill = Sign)) +
+  geom_col() +
+  scale_x_continuous(expand = c(0, 0)) +
+  labs(y = NULL)
+```
+# Exercise 2
+Fit some of the non-linear models (polynomial regression, splines) discussed in
+the lecture to the Auto data set. 
+Is there evidence for non-linear relationships in this data set? Create some
+informative plots to justify your answer.
+
+
+```{r}
+# Recipe
+lasso_pl_recipe <-
+  recipe(formula = Apps ~ ., data = College_train) %>%
+  step_poly(all_numeric_predictors(), degree = 2, options = list(raw = TRUE)) %>%
+  step_novel(all_nominal_predictors()) %>%
+  step_dummy(all_nominal_predictors()) %>%
+  step_zv(all_predictors()) %>%
+  step_normalize(all_predictors())
+
+# Specification
+lasso_pl_spec <-
+  linear_reg(mixture = 1, penalty = tune()) %>%
+  set_mode("regression") %>%
+  set_engine("glmnet")
+
+# Workflow
+lasso_pl_workflow <- workflow() %>%
+  add_recipe(lasso_pl_recipe) %>%
+  add_model(lasso_pl_spec)
+
+# Grid
+penalty_grid <- grid_regular(
+  penalty(range = c(-5, 2)),
+  levels = 50
+)
+
+# Tune model
+tune_res <- tune_grid(
+  lasso_pl_workflow,
+  resamples = College_fold,
+  grid = penalty_grid
+)
+
+# Finalize model
+lasso_pl_final <- finalize_workflow(lasso_pl_workflow, best_penalty)
+lasso_pl_final_fit <- fit(lasso_pl_final, data = College_train)
+
+# Check RMSE
+augment(lasso_pl_final_fit, new_data = College_test) %>%
+  rmse(truth = Apps, estimate = .pred)
+```
+
+Using polynomial features reduced the error by 100, which is almost 10%. This
+indicates that there are non-linear relationships in the data.
+Let's look at the feature importance to see which polynomials are important.
+
+```{r}
+lasso_pl_final_fit %>%
+  extract_fit_parsnip() %>%
+  vi(lambda = best_penalty$penalty) %>%
+  filter(Importance > 2) %>%
+  mutate(
+    Importance = abs(Importance),
+    Variable = fct_reorder(Variable, Importance)
+  ) %>%
+  ggplot(aes(x = Importance, y = Variable, fill = Sign)) +
+  geom_col() +
+  scale_x_continuous(expand = c(0, 0)) +
+  labs(y = NULL)
+```
+As we can see, not surprisingly `Accept` is still the most important feature
+together with its polynomial.
+Let's run another polynomial (lasso) regression just with `Accept` so that we
+can visualize the relationship.
+
+
+
+```{r}
+# Recipe
+lasso_pl_recipe <-
+  recipe(formula = Apps ~ Accept, data = College_train) %>%
+  step_poly(all_numeric_predictors(), degree = 2, options = list(raw = TRUE)) %>%
+  step_normalize(all_predictors())
+
+# Specification
+lasso_pl_spec <-
+  linear_reg(mixture = 1, penalty = tune()) %>%
+  set_mode("regression") %>%
+  set_engine("glmnet")
+
+# Workflow
+lasso_pl_workflow <- workflow() %>%
+  add_recipe(lasso_pl_recipe) %>%
+  add_model(lasso_pl_spec)
+
+# Grid
+penalty_grid <- grid_regular(
+  penalty(range = c(-5, 2)),
+  levels = 50
+)
+
+# Tune model
+tune_res <- tune_grid(
+  lasso_pl_workflow,
+  resamples = College_fold,
+  grid = penalty_grid
+)
+
+# Finalize model
+lasso_pl_final <- finalize_workflow(lasso_pl_workflow, best_penalty)
+lasso_pl_final_fit <- fit(lasso_pl_final, data = College_train)
+
+# Check RMSE
+augment(lasso_pl_final_fit, new_data = College_test) %>%
+  rmse(truth = Apps, estimate = .pred)
+```
+
+```{r}
+accept_min <- min(College$Accept)
+accept_max <- max(College$Accept)
+accept_range <- tibble(Accept = seq(accept_min, accept_max))
+accept_range
+```
+
+```{r}
+regression_lines <- bind_cols(
+  predict(lasso_pl_final_fit, new_data = accept_range),
+  accept_range
+)
+
+College
+
+College %>%
+  ggplot(aes(Accept, Apps)) +
+  geom_point(alpha = 0.2) +
+  geom_line(aes(y = .pred), data = regression_lines, color = "blue")
+```
+Ok this does look pretty linear. Let us take a look at the scatter plot between
+each variable and Accept instead.
+
+```{r}
+
+# plot scatter of all variabes in College vs Apps
+# get all colnames except for Apps
+colnames <- colnames(College)
+colnames <- colnames[colnames != "Apps"]
+
+for (colname in colnames) {
+  pl <- College %>%
+    ggplot(aes_string(x = colname, y = "Apps")) +
+    geom_point(alpha = 0.2)
+  print(pl)
+}
+```
+
+There are some non linear looking relationships. Let's look at books.
+
+
+```{r}
+# Recipe
+lasso_pl_recipe <-
+  recipe(formula = Apps ~ Books, data = College_train) %>%
+  step_poly(all_numeric_predictors(), degree = 2, options = list(raw = TRUE)) %>%
+  step_normalize(all_predictors())
+
+# Specification
+lasso_pl_spec <-
+  linear_reg(mixture = 1, penalty = tune()) %>%
+  set_mode("regression") %>%
+  set_engine("glmnet")
+
+# Workflow
+lasso_pl_workflow <- workflow() %>%
+  add_recipe(lasso_pl_recipe) %>%
+  add_model(lasso_pl_spec)
+
+# Grid
+penalty_grid <- grid_regular(
+  penalty(range = c(-5, 2)),
+  levels = 50
+)
+
+# Tune model
+tune_res <- tune_grid(
+  lasso_pl_workflow,
+  resamples = College_fold,
+  grid = penalty_grid
+)
+
+# Finalize model
+lasso_pl_final <- finalize_workflow(lasso_pl_workflow, best_penalty)
+lasso_pl_final_fit <- fit(lasso_pl_final, data = College_train)
+
+# Check RMSE
+augment(lasso_pl_final_fit, new_data = College_test) %>%
+  rmse(truth = Apps, estimate = .pred)
+```
+
+```{r}
+books_min <- min(College$Books)
+books_max <- max(College$Books)
+books_range <- tibble(Books = seq(books_min, books_max))
+books_range
+```
+
+```{r}
+regression_lines <- bind_cols(
+  predict(lasso_pl_final_fit, new_data = books_range),
+  books_range
+)
+
+College
+
+College %>%
+  ggplot(aes(Books, Apps)) +
+  geom_point(alpha = 0.2) +
+  geom_line(aes(y = .pred), data = regression_lines, color = "blue")
+```
+
+As we can see a polynomial fits this data better than a linear relationship.
+
+# Exercise 3
+The Wage data set contains a number of features, such as marital status (marital
+), job class (jobclass), and others.
+Explore the relationships between some of these predictors and wage, and use
+non-linear fitting techniques in order to fit flexible models to the data.
+Create plots of the results obtained, and write a summary of your findings.
+
+```{r}
+Wage <- tibble(Wage)
+
+basic_eda(Wage)
+```
+
+```{r}
+Wage_split <- initial_split(Wage, strata = wage, prop = 0.5)
+Wage_split
+Wage_train <- training(Wage_split)
+Wage_test <- testing(Wage_split)
+
+Wage_fold <- vfold_cv(Wage_train, v = 10)
+Wage_fold
+```
+
+```{r}
+colnames <- colnames(Wage)
+colnames <- colnames[colnames != "wage"]
+
+for (colname in colnames) {
+  pl <- Wage %>%
+    ggplot(aes_string(x = colname, y = "wage")) +
+    geom_point(alpha = 0.2)
+  print(pl)
+}
+```
+
+
+```{r}
+# Recipe
+lm_pl_recipe <-
+  recipe(formula = wage ~ age, data = Wage_train) %>%
+  step_poly(age, degree = 2, options = list(raw = TRUE)) %>%
+  step_normalize(all_predictors())
+
+# Specification
+lm_pl_spec <-
+  linear_reg() %>%
+  set_mode("regression") %>%
+  set_engine("lm")
+
+# Workflow
+lm_pl_workflow <- workflow() %>%
+  add_recipe(lm_pl_recipe) %>%
+  add_model(lm_pl_spec)
+
+# Finalize model
+lm_pl_fit <- fit(lm_pl_workflow, data = Wage_train)
+
+# Check RMSE
+augment(lm_pl_fit, new_data = Wage_test) %>%
+  rmse(truth = wage, estimate = .pred)
+tidy(lm_pl_fit)
+```
+
+
+```{r}
+age_min <- min(Wage$age)
+age_max <- max(Wage$age)
+age_range <- tibble(age = seq(age_min, age_max))
+age_range
+```
+
+```{r}
+regression_lines <- bind_cols(
+  predict(lm_pl_fit, new_data = age_range),
+  age_range
+)
+
+Wage %>%
+  ggplot(aes(age, wage)) +
+  geom_point(alpha = 0.2) +
+  geom_line(aes(y = .pred), data = regression_lines, color = "blue")
+```
+
+
+All the other variables are categorical. Hot encoding these variables basically results in a "piecewise non-linear" function. However, exploring this most likely is not very interesting.
+Therefor we will now test splines also on the relationships of age and wage.
+
+```{r}
+min(Wage$age)
+```
+
+```{r}
+spline_recipe <- recipe(formula = wage ~ age, data = Wage_train) %>%
+  step_bs(age, options = list(knots = 20, 30, 40, 50, 60, 70))
+
+# Specification
+spline_spec <-
+  linear_reg() %>%
+  set_mode("regression") %>%
+  set_engine("lm")
+
+# Workflow
+spline_workflow <- workflow() %>%
+  add_recipe(spline_recipe) %>%
+  add_model(spline_spec)
+
+# Finalize model
+spline_fit <- fit(spline_workflow, data = Wage_train)
+
+# Check RMSE
+augment(spline_fit, new_data = Wage_test) %>%
+  rmse(truth = wage, estimate = .pred)
+```
+
+
+```{r}
+regression_lines <- bind_cols(
+  predict(spline_fit, new_data = age_range),
+  age_range
+)
+
+Wage %>%
+  ggplot(aes(age, wage)) +
+  geom_point(alpha = 0.2) +
+  geom_line(aes(y = .pred), data = regression_lines, color = "blue")
+```
+
+
+Both the polynomial regression as well as splines capture the relationship
+between age and wage better than a simple linear regression. We can see that the
+splines fit the data even better than the polynomial regression, especially at
+the border regions.
